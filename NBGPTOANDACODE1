@@ -1,0 +1,67 @@
+import pandas as pd
+import numpy as np
+import oandapyV20
+from oandapyV20 import API
+from oandapyV20.exceptions import V20Error
+from oandapyV20.contrib.requests import MarketOrderRequest
+
+# Set API credentials
+accountID = "101-001-25734767-001"
+accessToken = "3bc846e54266d6751272cb37c9297ce6-6ae56356ee9e604a2336290b2d4eb6b3"
+
+# Initialize API client
+api = API(access_token=accessToken)
+
+# Define trade parameters
+instrument = 'EUR_USD'
+units = 1000
+stop_loss = 0.01
+take_profit = 0.02
+
+# Define technical indicators and thresholds
+sma_period = 20
+rsi_period = 14
+rsi_buy_threshold = 30
+rsi_sell_threshold = 70
+
+# Retrieve historical data for analysis
+params = {
+    "granularity": "M15",
+    "count": 200
+}
+
+candles_request = oandapyV20.endpoints.instruments.InstrumentsCandles(instrument=instrument, params=params)
+try:
+    candles_response = api.request(candles_request)
+    candles = candles_response['candles']
+except V20Error as e:
+    print("Error occurred while retrieving historical data:", e)
+    candles = []
+
+# Perform technical analysis
+df = pd.DataFrame(candles)
+df['time'] = pd.to_datetime(df['time'])
+df['close'] = pd.to_numeric(df['mid'].apply(lambda x: x['c']))
+df['sma'] = df['close'].rolling(sma_period).mean()
+df['rsi'] = ta.RSI(df['close'], rsi_period)
+
+latest_candle = df.iloc[-1]
+
+# Determine trade direction and place the trade
+trade_direction = None
+
+if latest_candle['rsi'] is not None:
+    if latest_candle['rsi'] < rsi_buy_threshold and latest_candle['close'] > latest_candle['sma']:
+        trade_direction = "buy"
+    elif latest_candle['rsi'] > rsi_sell_threshold and latest_candle['close'] < latest_candle['sma']:
+        trade_direction = "sell"
+
+if trade_direction:
+    market_order = MarketOrderRequest(instrument=instrument, units=units, takeProfitOnFill=take_profit, stopLossOnFill=stop_loss)
+    try:
+        response = api.request(market_order)
+        print("Trade placed successfully:", response)
+    except V20Error as e:
+        print("Error occurred while placing the trade:", e)
+else:
+    print("No trade signal identified.")
